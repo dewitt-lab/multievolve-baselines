@@ -1,0 +1,39 @@
+diff --git a/multievolve/predictors/neural_net_regressors.py b/multievolve/predictors/neural_net_regressors.py
+index 1db0bb2..fea0dfc 100644
+--- a/multievolve/predictors/neural_net_regressors.py
++++ b/multievolve/predictors/neural_net_regressors.py
+@@ -606,18 +606,22 @@ class Fcn(BaseNN):
+         self.flatten = nn.Flatten()
+         self.layers = nn.ModuleList()
+ 
+-        # First layer
+-        self.layers.append(nn.Linear(input_features, nn_arch[0]))
+-        self.layers.append(nn.LeakyReLU(negative_slope=0.2))
+-        self.layers.append(nn.Dropout(p=0.2))
+-
+-        for i in range(0, len(nn_arch)):
+-            if i < len(nn_arch) - 1:
+-                self.layers.append(nn.Linear(nn_arch[i], nn_arch[i + 1]))
+-                self.layers.append(nn.LeakyReLU(negative_slope=0.2))
+-                self.layers.append(nn.Dropout(p=0.2))
+-            if i == len(nn_arch) - 1:
+-                self.layers.append(nn.Linear(nn_arch[i], 1))
++        if len(nn_arch) == 0:
++            # Zero hidden layers: a pure linear map (tantamount to linear regression).
++            self.layers.append(nn.Linear(input_features, 1))
++        else:
++            # First layer
++            self.layers.append(nn.Linear(input_features, nn_arch[0]))
++            self.layers.append(nn.LeakyReLU(negative_slope=0.2))
++            self.layers.append(nn.Dropout(p=0.2))
++
++            for i in range(0, len(nn_arch)):
++                if i < len(nn_arch) - 1:
++                    self.layers.append(nn.Linear(nn_arch[i], nn_arch[i + 1]))
++                    self.layers.append(nn.LeakyReLU(negative_slope=0.2))
++                    self.layers.append(nn.Dropout(p=0.2))
++                if i == len(nn_arch) - 1:
++                    self.layers.append(nn.Linear(nn_arch[i], 1))
+ 
+         # set model hyperparameters
+         self.setup_model()
