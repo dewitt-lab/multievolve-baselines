@@ -11,6 +11,14 @@ Generates:
 
     output/huabc2/huabc2_training_{expr,bind}_log2.csv
     output/huabc2/combo_muts.csv
+
+Also extracts the experimentally tested multi-mutants (Origin == 'MULTI-evolve
+variant') into separate files, never mixed into the training data:
+    output/apex/apex_multievolve_variants_log2.csv
+    output/dcasrx/dcasrx_multievolve_variants_log2.csv
+    output/huabc2/huabc2_multievolve_variants_{expr,bind}_log2.csv
+Columns: mutation, property_value (log2, same transform as the training files).
+Variants without a measured value (or with value <= 0) are dropped.
 """
 import os
 import argparse
@@ -21,6 +29,20 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 ROOT_DIR = os.path.join(SCRIPT_DIR, '..')
 DATA_DIR = os.path.join(ROOT_DIR, 'data')
 OUTPUT_DIR = os.path.join(ROOT_DIR, 'output')
+
+
+def write_multievolve_variants(full_df, mut_col, value_col, out_path, label=''):
+    """Save 'MULTI-evolve variant' rows (identity + log2 phenotype) to out_path."""
+    multi = full_df[full_df['Origin'] == 'MULTI-evolve variant'][[mut_col, value_col]].copy()
+    multi.columns = ['mutation', 'property_value']
+    multi['property_value'] = pd.to_numeric(multi['property_value'], errors='coerce')
+    n_total = len(multi)
+    multi = multi.dropna(subset=['property_value'])
+    multi = multi[multi['property_value'] > 0].reset_index(drop=True)
+    multi['property_value'] = np.log2(multi['property_value'])
+    multi.to_csv(out_path, index=False)
+    print(f"Wrote {len(multi)}/{n_total} MULTI-evolve variants to {out_path}  "
+          f"(log2{label}; rows without a measurement dropped)")
 
 
 def prep_apex():
@@ -66,6 +88,11 @@ def prep_apex():
             f.write(m + '\n')
     print(f"Wrote {len(single_muts)} mutations to {out_combo}")
 
+    # A134P-containing variants have no 75-min measurement, so they drop out here
+    write_multievolve_variants(
+        full_df, 'Mutant', 'Fold Improvement (75 min)',
+        os.path.join(out_dir, 'apex_multievolve_variants_log2.csv'))
+
 
 def prep_dcasrx():
     full_df = pd.read_excel(os.path.join(DATA_DIR, 'Table S15 dCasRx variants.xlsx'))
@@ -106,6 +133,10 @@ def prep_dcasrx():
         for m in sorted(single_muts):
             f.write(m + '\n')
     print(f"Wrote {len(single_muts)} mutations to {out_combo}")
+
+    write_multievolve_variants(
+        full_df, 'Mutations', 'Fold Improvement (gTSM only)',
+        os.path.join(out_dir, 'dcasrx_multievolve_variants_log2.csv'))
 
 
 def prep_huabc2():
@@ -185,6 +216,11 @@ def prep_huabc2():
         print(f"Wrote {len(training_df)} rows to {out_path}  (log2)")
         print(f"  WT: 1, singles: {len(train_singles)}, "
               f"doubles: {len(train_doubles)}")
+
+        write_multievolve_variants(
+            full_df, 'mutation', col,
+            os.path.join(out_dir, f'huabc2_multievolve_variants_{tag}_log2.csv'),
+            label=f', {tag}')
 
     # combo_muts.csv — chain notation so run_multievolve.py can offset positions
     out_combo = os.path.join(out_dir, 'combo_muts.csv')

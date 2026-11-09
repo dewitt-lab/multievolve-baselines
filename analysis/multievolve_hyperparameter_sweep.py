@@ -52,7 +52,7 @@ CONFIG_SWEEP = {
 #     'layer_size': [100],
 #     'num_layers': [1, 2],
 #     'learning_rate': [0.0001, 0.001, 0.01],
-#     'batch_size': [4, 32],
+#     'batch_size': [4, 32],``
 #     'optimizer': ['adam'],
 #     'epochs': [300],
 # }

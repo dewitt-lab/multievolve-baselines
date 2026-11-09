@@ -61,8 +61,9 @@ Extract training CSVs from the supplementary tables:
 python analysis/prep_training_data.py all
 ```
 
-This creates `output/{apex,dcasrx,huabc2}/` with training CSVs
-and mutation lists (the `output/` directory is gitignored).
+This creates `output/{apex,dcasrx,huabc2}/` with training CSVs,
+mutation lists, and the experimentally tested MULTI-evolve variants
+(the `output/` directory is gitignored).
 
 ### Stage 2: Train models and score combinatorial variants
 
@@ -85,7 +86,9 @@ python analysis/run_multievolve.py huabc2 --measurement bind --zerolayer
 ```
 
 Output: `output/{protein}/{protein}_multievolve_proposals.csv` and
-`output/{protein}/{protein}_0layer_multievolve_proposals.csv`.
+`output/{protein}/{protein}_0layer_multievolve_proposals.csv`, plus
+`*_multievolve_eval_predictions.csv` (predictions for the training and
+MULTI-evolve variants).
 
 Run the hyperparameter sweep (extended grid including zero hidden layers and
 ridge regression):
@@ -106,9 +109,9 @@ intermediate CSVs produced in Stage 2 and writes figures to `figures/`.
 
 | Notebook | Figures produced |
 |----------|-----------------|
-| `additive-comparison-APEX.ipynb` | APEX additive vs. MULTI-evolve correlation |
-| `additive-comparison-dCasRx.ipynb` | dCasRx additive vs. MULTI-evolve correlation |
-| `additive-comparison-HuABC2.ipynb` | HuABC2 additive vs. MULTI-evolve correlation, Pareto frontiers |
+| `additive-comparison-APEX.ipynb` | APEX additive vs. MULTI-evolve correlation, predictions vs. measured |
+| `additive-comparison-dCasRx.ipynb` | dCasRx additive vs. MULTI-evolve correlation, predictions vs. measured |
+| `additive-comparison-HuABC2.ipynb` | HuABC2 additive vs. MULTI-evolve correlation, predictions vs. measured, Pareto frontiers |
 | `epistasis.ipynb` | Epistasis in training data vs. NN predictions (set `PROTEIN` and `MEASUREMENT` in the config cell) |
 | `additive-proteingym_fig2ef.ipynb` | DMS benchmark reanalysis |
 | `analyze_hparam_sweep.ipynb` | Hyperparameter sweep results |
