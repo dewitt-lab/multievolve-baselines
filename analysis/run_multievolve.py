@@ -47,6 +47,74 @@ from multievolve.predictors import Fcn
 from multievolve.proposers import CombinatorialProposer
 
 import argparse
+import hashlib
+
+
+# FCN configs keyed by (protein, measurement, zerolayer). measurement is None except for huabc2.
+CONFIGS = {
+    ('apex',   None,   False): dict(layer_size=100, num_layers=5, learning_rate=0.001,  batch_size=16, optimizer='adam', epochs=300),
+    ('apex',   None,   True):  dict(layer_size=100, num_layers=0, learning_rate=0.001,  batch_size=32, optimizer='adam', epochs=300),
+    ('dcasrx', None,   False): dict(layer_size=100, num_layers=1, learning_rate=0.001,  batch_size=32, optimizer='adam', epochs=300),
+    ('dcasrx', None,   True):  dict(layer_size=100, num_layers=0, learning_rate=0.0001, batch_size=8,  optimizer='adam', epochs=300),
+    ('huabc2', 'expr', False): dict(layer_size=100, num_layers=5, learning_rate=0.0001, batch_size=4,  optimizer='adam', epochs=300),
+    ('huabc2', 'bind', False): dict(layer_size=100, num_layers=3, learning_rate=0.0001, batch_size=4,  optimizer='adam', epochs=300),
+    ('huabc2', 'expr', True):  dict(layer_size=100, num_layers=0, learning_rate=0.001,  batch_size=16, optimizer='adam', epochs=300),
+    ('huabc2', 'bind', True):  dict(layer_size=100, num_layers=0, learning_rate=0.0001, batch_size=4,  optimizer='adam', epochs=300),
+}
+
+
+def get_config(protein, measurement=None, zerolayer=False):
+    """FCN config used by this script for the given protein / measurement / layer setting."""
+    key = (protein, measurement if protein == 'huabc2' else None, zerolayer)
+    if key not in CONFIGS:
+        raise KeyError(f"No config for protein={protein!r}, measurement={measurement!r}, zerolayer={zerolayer}")
+    return dict(CONFIGS[key])
+
+
+def hashed_training_csv(training_csv):
+    """Path of the content-hashed copy of `training_csv` that the models are trained from.
+
+    MULTI-evolve caches splits/models by training-CSV *filename*, so a stale cache
+    silently overrides an updated CSV (e.g. one cached before A134P was excluded).
+    Training from a content-hashed copy makes the cache key change whenever the data does.
+    """
+    with open(training_csv, 'rb') as f:
+        digest = hashlib.md5(f.read()).hexdigest()[:8]
+    return training_csv.replace('.csv', f'_{digest}.csv')
+
+
+def cached_model_paths(protein, training_csv, config, n_splits=10, measurement=None):
+    """Cached FCN checkpoint for each fold, as trained by this script on `training_csv` with `config`.
+
+    Only returns the exact models (current training-data hash, architecture, learning rate,
+    batch size, optimizer). Raises FileNotFoundError if any fold is missing, instead of
+    falling back to whatever other models happen to be in the cache.
+    """
+    dataset_name = os.path.splitext(os.path.basename(hashed_training_csv(training_csv)))[0]
+    objects_dir = os.path.join(REPO, 'proteins', protein, 'model_cache', dataset_name, 'objects')
+    arch = '-'.join([str(config['layer_size'])] * config['num_layers'])
+    suffix = (f" __ onehot __ fcn __ {arch} __ {config['learning_rate']}"
+              f" __ {config['batch_size']} __ {config['optimizer']}.pth")
+    rerun_hint = (f"Train them with: python analysis/run_multievolve.py {protein}"
+                  + (f" --measurement {measurement or '<expr|bind>'}" if protein == 'huabc2' else "")
+                  + (" --zerolayer" if config['num_layers'] == 0 else ""))
+
+    if not os.path.isdir(objects_dir):
+        raise FileNotFoundError(
+            f"No model cache for the current training data ({os.path.basename(training_csv)}):\n"
+            f"  {objects_dir}\n"
+            "The training CSV has changed since the models were trained, or they were never trained.\n"
+            + rerun_hint)
+    files = os.listdir(objects_dir)
+    paths = []
+    for i in range(n_splits):
+        matches = [f for f in files if f.startswith(f'split_by_kfold-{i}_') and f.endswith(suffix)]
+        if len(matches) != 1:
+            raise FileNotFoundError(
+                f"Expected exactly 1 cached model for fold {i} matching '*{suffix}' "
+                f"in {objects_dir}, found {len(matches)}: {matches}\n" + rerun_hint)
+        paths.append(os.path.join(objects_dir, matches[0]))
+    return paths
 
 
 if __name__ == '__main__':
@@ -63,91 +131,8 @@ if __name__ == '__main__':
     if args.protein == 'huabc2' and args.measurement is None:
         parser.error('--measurement is required for huabc2')
 
-    if args.protein == 'apex':
-        if not args.zerolayer:
-            # ---- Architecture ----
-            CONFIG = {
-                'layer_size': 100,
-                'num_layers': 5,
-                'learning_rate': 0.001,
-                'batch_size': 16,
-                'optimizer': 'adam',
-                'epochs': 300,
-            }
-        else:
-            
-            # ---- Architecture ----
-            CONFIG = {
-                'layer_size': 100,
-                'num_layers': 0,
-                'learning_rate': 0.001,
-                'batch_size': 32,
-                'optimizer': 'adam',
-                'epochs': 300,
-            }
-
-    elif args.protein == 'dcasrx':
-        if not args.zerolayer:
-            # ---- Architecture ----
-            CONFIG = {
-                'layer_size': 100,
-                'num_layers': 1,
-                'learning_rate': 0.001,
-                'batch_size': 32,
-                'optimizer': 'adam',
-                'epochs': 300,
-            }
-
-        else:
-            # ---- Architecture ----
-            CONFIG = {
-                'layer_size': 100,
-                'num_layers': 0,
-                'learning_rate': 0.0001,
-                'batch_size': 8,
-                'optimizer': 'adam',
-                'epochs': 300,
-            }
-
-    elif args.protein == 'huabc2':
-        if not args.zerolayer:
-            if args.measurement == 'expr':
-                CONFIG = {
-                    'layer_size': 100,
-                    'num_layers': 5,
-                    'learning_rate': 0.0001,
-                    'batch_size': 4,
-                    'optimizer': 'adam',
-                    'epochs': 300,
-                }
-            elif args.measurement == 'bind':
-                CONFIG = {
-                    'layer_size': 100,
-                    'num_layers': 3,
-                    'learning_rate': 0.0001,
-                    'batch_size': 4,
-                    'optimizer': 'adam',
-                'epochs': 300,
-                }
-        else:
-            if args.measurement == 'expr':
-                CONFIG = {
-                    'layer_size': 100,
-                    'num_layers': 0,
-                    'learning_rate': 0.001,
-                    'batch_size': 16,
-                    'optimizer': 'adam',
-                    'epochs': 300,
-                }
-            elif args.measurement == 'bind':
-                CONFIG = {
-                    'layer_size': 100,
-                    'num_layers': 0,
-                    'learning_rate': 0.0001,
-                    'batch_size': 4,
-                    'optimizer': 'adam',
-                    'epochs': 300,
-                }
+    # ---- Architecture ----
+    CONFIG = get_config(args.protein, args.measurement, args.zerolayer)
 
     # ---- Paths ----
     ANALYSIS_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -193,13 +178,9 @@ if __name__ == '__main__':
                 f"{args.protein}"
             )
 
-    # MULTI-evolve caches splits/models by training-CSV *filename*, so a stale cache
-    # silently overrides an updated CSV (e.g. one cached before A134P was excluded).
-    # Train from a content-hashed copy so the cache key changes whenever the data does.
-    import hashlib
+    # Train from a content-hashed copy (see hashed_training_csv) so a stale cache can't be reused.
     import shutil
-    _digest = hashlib.md5(open(TRAINING_CSV, 'rb').read()).hexdigest()[:8]
-    _hashed_csv = TRAINING_CSV.replace('.csv', f'_{_digest}.csv')
+    _hashed_csv = hashed_training_csv(TRAINING_CSV)
     shutil.copyfile(TRAINING_CSV, _hashed_csv)
     SPLITTER_CSV = _hashed_csv
 
